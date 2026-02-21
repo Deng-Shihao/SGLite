@@ -1,0 +1,36 @@
+# pycache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# installed packages
+*.dist-info/
+*.egg-info/
+
+# json files
+*.json
+*.jsonl
+
+# profiling data
+*.nsys-rep
+*.ncu-rep
+
+# binaries
+build/
+dist/
+*.tar.gz
+
+# virtual environment
+.venv/
+venv/
+env/
+
+# clangd config
+.clangd
+
+# .vscode
+.vscode/
+
+.DS_Store
+sglang/
+CLAUDE.md
