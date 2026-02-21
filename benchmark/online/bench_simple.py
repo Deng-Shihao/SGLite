@@ -3,14 +3,14 @@ import random
 import sys
 from typing import List
 
-from minisgl.benchmark.client import (
+from sglite.benchmark.client import (
     benchmark_one,
     benchmark_one_batch,
     generate_prompt,
     get_model_name,
     process_benchmark_results,
 )
-from minisgl.utils import init_logger
+from sglite.utils import init_logger
 from openai import AsyncOpenAI as OpenAI
 from transformers import AutoTokenizer
 

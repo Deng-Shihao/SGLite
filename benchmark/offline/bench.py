@@ -5,8 +5,8 @@ import torch
 from random import randint, seed
 from datetime import datetime
 
-from minisgl.core import SamplingParams
-from minisgl.llm import LLM
+from sglite.core import SamplingParams
+from sglite.llm import LLM
 
 
 # Benchmark Configuration

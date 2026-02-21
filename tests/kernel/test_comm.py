@@ -1,11 +1,11 @@
 import os
 import time
 import torch
-from minisgl.distributed import set_tp_info
-import minisgl.kernel as kernel
+from sglite.distributed import set_tp_info
+import sglite.kernel as kernel
 from tqdm import tqdm
 
-from minisgl.utils import init_logger
+from sglite.utils import init_logger
 
 
 logger = init_logger(__name__)

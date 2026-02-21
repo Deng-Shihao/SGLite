@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import torch
-from minisgl.layers.quantization.awq_triton import awq_gemm_triton
-from minisgl.utils import call_if_main
+from sglite.layers.quantization.awq_triton import awq_gemm_triton
+from sglite.utils import call_if_main
 
 
 def pack_int4_to_int32(values: torch.Tensor) -> torch.Tensor:
@@ -160,7 +160,7 @@ def test_awq_kernel_correctness():
 
 def test_awq_linear_method():
     """Test AWQLinearMethod create_weights and apply_weights."""
-    from minisgl.layers.quantization.awq import AWQConfig, AWQLinearMethod
+    from sglite.layers.quantization.awq import AWQConfig, AWQLinearMethod
     
     print("\nTesting AWQLinearMethod...")
     

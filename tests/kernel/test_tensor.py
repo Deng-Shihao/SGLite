@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from minisgl.kernel import test_tensor
-from minisgl.utils import call_if_main
+from sglite.kernel import test_tensor
+from sglite.utils import call_if_main
 import torch
 
 

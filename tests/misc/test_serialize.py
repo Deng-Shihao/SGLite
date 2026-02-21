@@ -2,11 +2,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-from minisgl.core import SamplingParams
+from sglite.core import SamplingParams
 import torch
-from minisgl.message import BatchBackendMsg, UserMsg
-from minisgl.message.utils import serialize_type, deserialize_type
-from minisgl.utils import call_if_main, init_logger
+from sglite.message import BatchBackendMsg, UserMsg
+from sglite.message.utils import serialize_type, deserialize_type
+from sglite.utils import call_if_main, init_logger
 
 logger = init_logger(__name__)
 
