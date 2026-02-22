@@ -95,6 +95,7 @@ Chat with your model directly in the terminal by adding the `--shell` flag.
 
 ```bash
 python -m sglite --model "Qwen/Qwen3-0.6B" --shell
+python -m sglite --model "Qwen/Qwen3-4B-AWQ" --shell
 ```
 
 ![shell-example](https://lmsys.org/images/blog/sglite/shell.png)
