@@ -6,10 +6,9 @@ import torch
 from sglite.layers import (
     AttentionLayer,
     BaseOP,
-    LinearColParallelMerged,
-    LinearOProj,
-    LinearQKVMerged,
-    LinearRowParallel,
+    MergedColumnParallelLinear,
+    QKVParallelLinear,
+    RowParallelLinear,
     RMSNorm,
     silu_and_mul,
 )
@@ -24,7 +23,7 @@ class GatedMLP(BaseOP):
         config: ModelConfig,
         linear_method: Optional[LinearMethodBase] = None,
     ):
-        self.gate_up_proj = LinearColParallelMerged(
+        self.gate_up_proj = MergedColumnParallelLinear(
             config.hidden_size,
             [config.intermediate_size, config.intermediate_size],
             has_bias=False,
@@ -37,7 +36,7 @@ class GatedMLP(BaseOP):
             case act_fn:
                 raise ValueError(f"Unsupported activation function: {act_fn}")
 
-        self.down_proj = LinearRowParallel(
+        self.down_proj = RowParallelLinear(
             config.intermediate_size,
             config.hidden_size,
             has_bias=False,
@@ -64,7 +63,7 @@ class RopeAttn(BaseOP):
         linear_method: Optional[LinearMethodBase] = None,
     ):
         head_dim = config.head_dim
-        self.qkv_proj = LinearQKVMerged(
+        self.qkv_proj = QKVParallelLinear(
             hidden_size=config.hidden_size,
             head_dim=config.head_dim,
             num_qo_heads=config.num_qo_heads,
@@ -89,7 +88,7 @@ class RopeAttn(BaseOP):
             q_norm=self.q_norm,
             k_norm=self.k_norm,
         )
-        self.o_proj = LinearOProj(
+        self.o_proj = RowParallelLinear(
             head_dim * config.num_qo_heads,
             config.hidden_size,
             has_bias=False,

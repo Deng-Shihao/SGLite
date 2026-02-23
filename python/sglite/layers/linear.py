@@ -11,7 +11,7 @@ from .base import BaseOP, _STATE_DICT, _concat_prefix
 from .quantization import LinearMethodBase, UnquantizedLinearMethod
 
 
-class _LinearTPImpl(BaseOP):
+class _TPLinearBase(BaseOP):
     """Real implementation of a linear layer with tensor parallelism and quantization support."""
 
     def __init__(
@@ -115,7 +115,7 @@ class _LinearTPImpl(BaseOP):
         return self._linear_method.apply_weights(self._weights, x, self.bias)
 
 
-class LinearColParallelMerged(_LinearTPImpl):
+class MergedColumnParallelLinear(_TPLinearBase):
     def __init__(
         self,
         input_size: int,
@@ -138,7 +138,7 @@ class LinearColParallelMerged(_LinearTPImpl):
         )
 
 
-class LinearQKVMerged(_LinearTPImpl):
+class QKVParallelLinear(_TPLinearBase):
     def __init__(
         self,
         hidden_size: int,
@@ -166,45 +166,7 @@ class LinearQKVMerged(_LinearTPImpl):
         )
 
 
-class LinearOProj(_LinearTPImpl):
-    def __init__(
-        self,
-        input_size: int,
-        output_size: int,
-        has_bias: bool,
-        linear_method: Optional[LinearMethodBase] = None,
-    ):
-        tp_info = get_tp_info()
-        full_isize = input_size
-        full_osize = output_size
-        local_isize = divide_even(input_size, tp_info.size)
-        local_osize = output_size
-        self._comm = DistributedCommunicator()
-        self._tp_size = tp_info.size
-        super().__init__(
-            full_isize,
-            full_osize,
-            local_isize,
-            local_osize,
-            has_bias,
-            linear_method,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Sync weight dict with potentially reloaded attributes
-        for name in list(self._weights.keys()):
-            if hasattr(self, name):
-                self._weights[name] = getattr(self, name)
-        # Add metadata back for apply_weights
-        for name, value in self._weight_metadata.items():
-            self._weights[name] = value
-        y = self._linear_method.apply_weights(self._weights, x, self.bias)
-        if self._tp_size > 1:
-            y = self._comm.all_reduce(y)
-        return y
-
-
-class LinearRowParallel(_LinearTPImpl):
+class RowParallelLinear(_TPLinearBase):
     def __init__(
         self,
         input_size: int,
