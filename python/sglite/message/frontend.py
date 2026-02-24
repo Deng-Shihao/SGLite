@@ -27,3 +27,5 @@ class UserReply(BaseFrontendMsg):
     uid: int
     incremental_output: str
     finished: bool
+    num_input_tokens: int = 0
+    num_output_tokens: int = 0

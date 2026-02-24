@@ -330,7 +330,8 @@ async def async_input(prompt=""):
     return await loop.run_in_executor(None, lambda: input(prompt))
 
 
-async def shell():
+async def shell(shell_bench: bool = False):
+    state = get_global_state()
     commands = ["/exit", "/reset"]
     completer = WordCompleter(commands)
     session = PromptSession("$ ", completer=completer)
@@ -338,7 +339,6 @@ async def shell():
     try:
         history: List[Tuple[str, str]] = []
         while True:
-            need_stop = False
             cmd = (await session.prompt_async()).strip()
             if cmd == "":
                 continue
@@ -353,30 +353,62 @@ async def shell():
             for user_msg, assistant_msg in history:
                 history_messages.append(Message(role="user", content=user_msg))
                 history_messages.append(Message(role="assistant", content=assistant_msg))
-            # send to server
-            req = OpenAICompletionRequest(
-                model="",
-                messages=history_messages + [Message(role="user", content=cmd)],
-                max_tokens=ENV.SHELL_MAX_TOKENS.value,
-                top_k=ENV.SHELL_TOP_K.value,
-                top_p=ENV.SHELL_TOP_P.value,
-                temperature=ENV.SHELL_TEMPERATURE.value,
-                stream=True,
+
+            messages = history_messages + [Message(role="user", content=cmd)]
+            prompt = [msg.model_dump() for msg in messages]
+
+            uid = state.new_user()
+            t_start = time.perf_counter()
+            await state.send_one(
+                TokenizeMsg(
+                    uid=uid,
+                    text=prompt,
+                    sampling_params=SamplingParams(
+                        max_tokens=ENV.SHELL_MAX_TOKENS.value,
+                        top_k=ENV.SHELL_TOP_K.value,
+                        top_p=ENV.SHELL_TOP_P.value,
+                        temperature=ENV.SHELL_TEMPERATURE.value,
+                    ),
+                )
             )
+
             cur_msg = ""
-            async for chunk in (await shell_completion(req)).body_iterator:
-                if need_stop:
+            t_first_token: float | None = None
+            num_input_tokens = 0
+            num_output_tokens = 0
+
+            async for ack in state.wait_for_ack(uid):
+                if t_first_token is None:
+                    t_first_token = time.perf_counter()
+                if ack.incremental_output:
+                    cur_msg += ack.incremental_output
+                    print(ack.incremental_output, end="", flush=True)
+                num_input_tokens = ack.num_input_tokens
+                num_output_tokens = ack.num_output_tokens
+                if ack.finished:
                     break
-                msg = chunk.decode()  # type: ignore
-                assert msg.startswith("data: "), msg
-                msg = msg[6:]
-                assert msg.endswith("\n"), msg
-                msg = msg[:-1]
-                if msg == "[DONE]":
-                    continue
-                cur_msg += msg
-                print(msg, end="", flush=True)
+
+            t_end = time.perf_counter()
             print("", flush=True)
+
+            if shell_bench and t_first_token is not None:
+                ttft = t_first_token - t_start
+                gen_duration = t_end - t_first_token
+                if gen_duration > 0 and num_output_tokens > 1:
+                    decode_tokens = num_output_tokens - 1
+                    speed_tok_s = decode_tokens / gen_duration
+                    speed_ms_tok = 1000.0 / speed_tok_s
+                else:
+                    speed_tok_s = 0.0
+                    speed_ms_tok = 0.0
+
+                print("=" * 40)
+                print("Speed of Inference")
+                print("-" * 40)
+                print(f"TTFT          : {ttft:.3f}s for {num_input_tokens} tokens")
+                print(f"Generation    : {speed_tok_s:.1f} tok/s  ({speed_ms_tok:.1f} ms/tok)")
+                print("=" * 40)
+
             history.append((cmd, cur_msg))
     except EOFError:
         # user pressed Ctrl-D
@@ -392,8 +424,12 @@ async def shell():
         for child in parent.children(recursive=True):
             child.kill()
 
-
-def run_api_server(config: ServerArgs, start_backend: Callable[[], None], run_shell: bool) -> None:
+def run_api_server(
+    config: ServerArgs,
+    start_backend: Callable[[], None],
+    run_shell: bool,
+    shell_bench: bool = False,
+) -> None:
     """
     Run the frontend API server (FastAPI + uvicorn) and wire it to the tokenizer process via ZMQ.
 
@@ -402,6 +438,7 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], None], run_sh
         start_backend: Callback that launches the backend worker processes (TP schedulers +
             tokenizer/detokenizer).
         run_shell: If True, run an interactive terminal shell instead of starting uvicorn.
+        shell_bench: If True, display benchmark metrics (TTFT, generation speed) after each reply.
     """
 
     global _GLOBAL_STATE
@@ -434,4 +471,4 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], None], run_sh
     if not run_shell:
         uvicorn.run(app, host=host, port=port)
     else:
-        asyncio.run(shell())
+        asyncio.run(shell(shell_bench=shell_bench))

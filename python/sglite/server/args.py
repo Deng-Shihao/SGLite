@@ -51,7 +51,7 @@ class ServerArgs(SchedulerConfig):
         return f"tcp://127.0.0.1:{self.server_port + 1}"
 
 
-def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bool]:
+def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bool, bool]:
     """
     Parse command line arguments and return an EngineConfig.
 
@@ -200,12 +200,21 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
         help="Run the server in shell mode.",
     )
 
+    parser.add_argument(
+        "--shell-bench",
+        action="store_true",
+        help="Enable benchmark display in shell mode (TTFT, generation speed).",
+    )
+
     # Parse arguments
     # same parser.parse_args(sys.argv[1:])
     kwargs = parser.parse_args(args).__dict__.copy()
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")
+    shell_bench: bool = kwargs.pop("shell_bench")
+    if shell_bench:
+        run_shell = True
     if run_shell:
         kwargs["cuda_graph_max_bs"] = 1
         kwargs["max_running_req"] = 1
@@ -234,4 +243,4 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
     result = ServerArgs(**kwargs)
     logger = init_logger(__name__)
     logger.info(f"Parsed arguments:\n{result}")
-    return result, run_shell
+    return result, run_shell, shell_bench

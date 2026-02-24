@@ -91,7 +91,17 @@ class Scheduler(SchedulerIOMixin):
             finished = not req.can_decode()
             if not req.sampling_params.ignore_eos:
                 finished |= next_token == self.eos_token_id
-            reply.append(DetokenizeMsg(uid=req.uid, next_token=next_token, finished=finished))
+            num_input_tokens = req.max_device_len - req.output_len
+            num_output_tokens = len(req.input_ids) - num_input_tokens
+            reply.append(
+                DetokenizeMsg(
+                    uid=req.uid,
+                    next_token=next_token,
+                    finished=finished,
+                    num_input_tokens=num_input_tokens,
+                    num_output_tokens=num_output_tokens,
+                )
+            )
 
             # free resources if the req is finished and not ongoing
             if finished:

@@ -41,7 +41,7 @@ def launch_server(run_shell: bool = False) -> None:
     from .api_server import run_api_server
     from .args import parse_args
 
-    server_args, run_shell = parse_args(sys.argv[1:], run_shell)
+    server_args, run_shell, shell_bench = parse_args(sys.argv[1:], run_shell)
     logger = init_logger(__name__, "initializer")
 
     def start_subprocess() -> None:
@@ -110,7 +110,7 @@ def launch_server(run_shell: bool = False) -> None:
         for _ in range(num_tokenizers + 2):
             logger.info(ack_queue.get())
 
-    run_api_server(server_args, start_subprocess, run_shell=run_shell)
+    run_api_server(server_args, start_subprocess, run_shell=run_shell, shell_bench=shell_bench)
 
 
 if __name__ == "__main__":
