@@ -13,6 +13,8 @@ from vllm import LLM, SamplingParams
 MAX_INPUT_LEN = 1024
 MAX_OUTPUT_LEN = 1024
 BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+ATTENTION_BACKENDS = ["FLASHINFER", "FLASH_ATTN"]
+TP_SIZES = [1, 2]
 MODELS = [
     {"name": "Qwen/Qwen3-0.6B"},
     {"name": "Qwen/Qwen3-4B"},
@@ -72,6 +74,19 @@ def warmup(llm, max_input_len):
     print(f"Warmup completed in {warmup_end - warmup_start:.2f} seconds\n")
 
 
+def format_comparison_row(batch_size, lhs_result, rhs_result):
+    if lhs_result is None or rhs_result is None:
+        return f"{batch_size:>12} | {'N/A':>14} | {'N/A':>14} | {'N/A':>12}"
+
+    lhs_throughput = lhs_result["throughput"]
+    rhs_throughput = rhs_result["throughput"]
+    ratio = lhs_throughput / rhs_throughput if rhs_throughput else float("inf")
+    return (
+        f"{batch_size:>12} | {lhs_throughput:>14.2f} | {rhs_throughput:>14.2f} | "
+        f"{ratio:>12.2f}"
+    )
+
+
 def main():
     # Generate output filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -88,6 +103,8 @@ Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 Max Input Length: {MAX_INPUT_LEN}
 Max Output Length: {MAX_OUTPUT_LEN}
 Batch Sizes: {BATCH_SIZES}
+Attention Backends: {ATTENTION_BACKENDS}
+TP Sizes: {TP_SIZES}
 Models: {[m['name'] for m in MODELS]}
 ================================================================================
 """
@@ -96,52 +113,128 @@ Models: {[m['name'] for m in MODELS]}
     
     for model_config in MODELS:
         model_name = model_config["name"]
+        model_results = {}
         
         model_header = f"\n{'='*80}\nModel: {model_name}\n{'='*80}\n"
         print(model_header)
         results.append(model_header)
         
-        try:
-            print("Initializing model...")
-            llm = LLM(
-                model=model_name,
-                max_model_len=4096,
-                max_num_seqs=max(BATCH_SIZES),
-                enable_chunked_prefill=True,
-                trust_remote_code=True,
-                gpu_memory_utilization=0.9,
-            )
-            
-            # Warmup
-            warmup(llm, MAX_INPUT_LEN)
-            
-            # Table header
-            table_header = f"{'Batch Size':>12} | {'Total Tokens':>14} | {'Time (s)':>10} | {'Throughput (tok/s)':>20}"
-            separator = "-" * len(table_header)
-            print(table_header)
-            print(separator)
-            results.append(table_header)
-            results.append(separator)
-            
-            for batch_size in BATCH_SIZES:
+        for tp_size in TP_SIZES:
+            tp_header = f"\n{'-' * 80}\nTensor Parallel Size: {tp_size}\n{'-' * 80}"
+            print(tp_header)
+            results.append(tp_header)
+
+            for attention_backend in ATTENTION_BACKENDS:
+                combo_results = {}
+                combo_key = (attention_backend, tp_size)
+                combo_header = (
+                    f"\nAttention Backend: {attention_backend} | TP Size: {tp_size}\n"
+                    f"{'-' * 80}"
+                )
+                print(combo_header)
+                results.append(combo_header)
+
+                llm = None
                 try:
-                    result = run_benchmark(llm, batch_size, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-                    row = f"{result['num_seqs']:>12} | {result['total_tokens']:>14} | {result['time']:>10.2f} | {result['throughput']:>20.2f}"
-                    print(row)
-                    results.append(row)
+                    print("Initializing model...")
+                    llm = LLM(
+                        model=model_name,
+                        attention_backend=attention_backend,
+                        tensor_parallel_size=tp_size,
+                        max_model_len=4096,
+                        max_num_seqs=max(BATCH_SIZES),
+                        enable_chunked_prefill=True,
+                        trust_remote_code=True,
+                        gpu_memory_utilization=0.9,
+                    )
+
+                    warmup(llm, MAX_INPUT_LEN)
+
+                    table_header = (
+                        f"{'Batch Size':>12} | {'Total Tokens':>14} | {'Time (s)':>10} | "
+                        f"{'Throughput (tok/s)':>20}"
+                    )
+                    separator = "-" * len(table_header)
+                    print(table_header)
+                    print(separator)
+                    results.append(table_header)
+                    results.append(separator)
+
+                    for batch_size in BATCH_SIZES:
+                        try:
+                            result = run_benchmark(llm, batch_size, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
+                            combo_results[batch_size] = result
+                            row = (
+                                f"{result['num_seqs']:>12} | {result['total_tokens']:>14} | "
+                                f"{result['time']:>10.2f} | {result['throughput']:>20.2f}"
+                            )
+                            print(row)
+                            results.append(row)
+                        except Exception as e:
+                            error_row = f"{batch_size:>12} | ERROR: {str(e)[:50]}"
+                            print(error_row)
+                            results.append(error_row)
                 except Exception as e:
-                    error_row = f"{batch_size:>12} | ERROR: {str(e)[:50]}"
-                    print(error_row)
-                    results.append(error_row)
-            
-            # Clean up model to free GPU memory
-            del llm
-            torch.cuda.empty_cache()
-            
-        except Exception as e:
-            error_msg = f"Failed to load model {model_name}: {str(e)}"
-            print(error_msg)
-            results.append(error_msg)
+                    error_msg = (
+                        "Failed to load model "
+                        f"{model_name} with backend {attention_backend} and tp={tp_size}: {str(e)}"
+                    )
+                    print(error_msg)
+                    results.append(error_msg)
+                finally:
+                    if llm is not None:
+                        del llm
+                        torch.cuda.empty_cache()
+
+                model_results[combo_key] = combo_results
+
+        for tp_size in TP_SIZES:
+            comparison_header = (
+                f"\n{'-' * 80}\nBackend Comparison at TP={tp_size} (tok/s)\n{'-' * 80}"
+            )
+            comparison_table_header = (
+                f"{'Batch Size':>12} | {'FLASHINFER':>14} | {'FLASH_ATTN':>14} | {'FI/FA Ratio':>12}"
+            )
+            comparison_separator = "-" * len(comparison_table_header)
+            print(comparison_header)
+            print(comparison_table_header)
+            print(comparison_separator)
+            results.append(comparison_header)
+            results.append(comparison_table_header)
+            results.append(comparison_separator)
+
+            for batch_size in BATCH_SIZES:
+                comparison_row = format_comparison_row(
+                    batch_size,
+                    model_results.get(("FLASHINFER", tp_size), {}).get(batch_size),
+                    model_results.get(("FLASH_ATTN", tp_size), {}).get(batch_size),
+                )
+                print(comparison_row)
+                results.append(comparison_row)
+
+        for attention_backend in ATTENTION_BACKENDS:
+            comparison_header = (
+                f"\n{'-' * 80}\nTP Comparison for {attention_backend} (tok/s)\n{'-' * 80}"
+            )
+            comparison_table_header = (
+                f"{'Batch Size':>12} | {'TP=1':>14} | {'TP=2':>14} | {'TP2/TP1 Ratio':>12}"
+            )
+            comparison_separator = "-" * len(comparison_table_header)
+            print(comparison_header)
+            print(comparison_table_header)
+            print(comparison_separator)
+            results.append(comparison_header)
+            results.append(comparison_table_header)
+            results.append(comparison_separator)
+
+            for batch_size in BATCH_SIZES:
+                comparison_row = format_comparison_row(
+                    batch_size,
+                    model_results.get((attention_backend, 2), {}).get(batch_size),
+                    model_results.get((attention_backend, 1), {}).get(batch_size),
+                )
+                print(comparison_row)
+                results.append(comparison_row)
     
     # Footer
     footer = f"\n{'='*80}\nBenchmark completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'='*80}\n"
