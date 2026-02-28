@@ -34,7 +34,6 @@ def run_benchmark(llm, num_seqs, max_input_len, max_output_len):
         max_tokens=max_output_len,
         temperature=0.6,
         top_p=0.95,
-        presence_penalty=1.5,
     )
     
     dummy_prompt_token_ids = [100] * max_input_len

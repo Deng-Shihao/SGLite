@@ -1,103 +1,148 @@
-# Adapted from: https://github.com/GeeeekExplorer/nano-vllm/blob/main/bench.py
+"""Offline throughput benchmark for SGLite."""
+
+from __future__ import annotations
 
 import time
-import torch
-from random import randint, seed
+from dataclasses import dataclass
 from datetime import datetime
+
+import torch
 
 from sglite.core import SamplingParams
 from sglite.llm import LLM
 
 
-# Benchmark Configuration
 MAX_INPUT_LEN = 1024
 MAX_OUTPUT_LEN = 1024
-BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+PROMPT_TOKEN_ID = 100
+WARMUP_SEQS = 32
+WARMUP_TOKENS = 128
+
+BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 MODELS = [
     {"name": "Qwen/Qwen3-0.6B", "dtype": None},
-    # {"name": "Qwen/Qwen3-4B", "dtype": None},
-    # {"name": "Qwen/Qwen3-4B-AWQ", "dtype": torch.float16},
-    # {"name": "Qwen/Qwen3-8B", "dtype": None},
-    # {"name": "Qwen/Qwen3-8B-AWQ", "dtype": torch.float16},
+    {"name": "Qwen/Qwen3-4B", "dtype": None},
+    {"name": "Qwen/Qwen3-4B-AWQ", "dtype": torch.float16},
+    {"name": "Qwen/Qwen3-8B", "dtype": None},
+    {"name": "Qwen/Qwen3-8B-AWQ", "dtype": torch.float16},
 ]
 
 
-def run_benchmark(llm, num_seqs, max_input_len, max_output_len):
-    """Run a single benchmark with given parameters."""
-    seed(0)
+@dataclass
+class BenchmarkResult:
+    num_seqs: int
+    total_tokens: int
+    time_s: float
+    throughput: float
 
-    prompt_token_ids = [
-        [randint(0, 10000) for _ in range(randint(100, max_input_len))] for _ in range(num_seqs)
-    ]
-    sampling_params = [
-        SamplingParams(temperature=0.6, ignore_eos=True, max_tokens=randint(100, max_output_len))
+
+def build_prompts(num_seqs: int, input_len: int) -> list[list[int]]:
+    prompt_token_ids = [PROMPT_TOKEN_ID] * input_len
+    return [prompt_token_ids.copy() for _ in range(num_seqs)]
+
+
+def build_sampling_params(num_seqs: int, max_output_len: int) -> list[SamplingParams]:
+    return [
+        SamplingParams(
+            max_tokens=max_output_len,
+            temperature=0.6,
+            top_p=0.95,
+            ignore_eos=True,
+        )
         for _ in range(num_seqs)
     ]
 
-    # Warm up
-    llm.generate(["Benchmark: "], SamplingParams(temperature=0.1))
 
-    # Benchmark
-    t = time.time()
-    llm.generate(prompt_token_ids, sampling_params)
-    t = time.time() - t
+def warmup(llm: LLM, max_input_len: int) -> None:
+    print(f"Running warmup with {WARMUP_SEQS} sequences...")
+    prompts = build_prompts(WARMUP_SEQS, max_input_len)
+    sampling_params = [
+        SamplingParams(
+            max_tokens=WARMUP_TOKENS,
+            temperature=0.6,
+            top_p=0.95,
+            ignore_eos=True,
+        )
+        for _ in range(WARMUP_SEQS)
+    ]
 
-    total_tokens = sum(sp.max_tokens for sp in sampling_params)
-    throughput = total_tokens / t
+    start_time = time.perf_counter()
+    llm.generate(prompts, sampling_params)
+    elapsed = time.perf_counter() - start_time
+    print(f"Warmup completed in {elapsed:.2f} seconds\n")
 
-    return {"num_seqs": num_seqs, "total_tokens": total_tokens, "time": t, "throughput": throughput}
+
+def run_benchmark(llm: LLM, num_seqs: int, max_input_len: int, max_output_len: int) -> BenchmarkResult:
+    prompts = build_prompts(num_seqs, max_input_len)
+    sampling_params = build_sampling_params(num_seqs, max_output_len)
+
+    start_time = time.perf_counter()
+    outputs = llm.generate(prompts, sampling_params)
+    total_time = time.perf_counter() - start_time
+
+    total_generated_tokens = sum(len(output["token_ids"]) for output in outputs)
+    throughput = total_generated_tokens / total_time
+
+    return BenchmarkResult(
+        num_seqs=num_seqs,
+        total_tokens=total_generated_tokens,
+        time_s=total_time,
+        throughput=throughput,
+    )
 
 
-def main():
-    # Generate output filename with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"benchmark_results_{timestamp}.txt"
+def create_llm(model_name: str, model_dtype: torch.dtype | None) -> LLM:
+    kwargs = {
+        "max_seq_len_override": 4096,
+        "max_extend_tokens": 16384,
+        "cuda_graph_max_bs": 256,
+    }
+    if model_dtype is not None:
+        kwargs["dtype"] = model_dtype
+    return LLM(model_name, **kwargs)
 
-    results = []
 
-    # Header
-    header = f"""
+def format_header() -> str:
+    return f"""
 ================================================================================
                          OFFLINE BENCHMARK RESULTS
 ================================================================================
 Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 Max Input Length: {MAX_INPUT_LEN}
 Max Output Length: {MAX_OUTPUT_LEN}
+Warmup: {WARMUP_SEQS} seqs x {WARMUP_TOKENS} tokens
 Batch Sizes: {BATCH_SIZES}
 Models: {[m["name"] for m in MODELS]}
 ================================================================================
 """
+
+
+def main() -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = f"benchmark_results_{timestamp}.txt"
+    results: list[str] = []
+
+    header = format_header()
     print(header)
     results.append(header)
 
     for model_config in MODELS:
         model_name = model_config["name"]
         model_dtype = model_config["dtype"]
+        llm: LLM | None = None
 
         model_header = f"\n{'=' * 80}\nModel: {model_name}\n{'=' * 80}\n"
         print(model_header)
         results.append(model_header)
 
         try:
-            # Initialize LLM with appropriate dtype
-            if model_dtype is not None:
-                llm = LLM(
-                    model_name,
-                    dtype=model_dtype,
-                    max_seq_len_override=4096,
-                    max_extend_tokens=16384,
-                    cuda_graph_max_bs=256,
-                )
-            else:
-                llm = LLM(
-                    model_name,
-                    max_seq_len_override=4096,
-                    max_extend_tokens=16384,
-                    cuda_graph_max_bs=256,
-                )
+            llm = create_llm(model_name, model_dtype)
+            warmup(llm, MAX_INPUT_LEN)
 
-            # Table header
-            table_header = f"{'Batch Size':>12} | {'Total Tokens':>14} | {'Time (s)':>10} | {'Throughput (tok/s)':>20}"
+            table_header = (
+                f"{'Batch Size':>12} | {'Total Tokens':>14} | {'Time (s)':>10} | "
+                f"{'Throughput (tok/s)':>20}"
+            )
             separator = "-" * len(table_header)
             print(table_header)
             print(separator)
@@ -107,32 +152,36 @@ Models: {[m["name"] for m in MODELS]}
             for batch_size in BATCH_SIZES:
                 try:
                     result = run_benchmark(llm, batch_size, MAX_INPUT_LEN, MAX_OUTPUT_LEN)
-                    row = f"{result['num_seqs']:>12} | {result['total_tokens']:>14} | {result['time']:>10.2f} | {result['throughput']:>20.2f}"
+                    row = (
+                        f"{result.num_seqs:>12} | {result.total_tokens:>14} | "
+                        f"{result.time_s:>10.2f} | {result.throughput:>20.2f}"
+                    )
                     print(row)
                     results.append(row)
-                except Exception as e:
-                    error_row = f"{batch_size:>12} | ERROR: {str(e)[:50]}"
+                except Exception as exc:
+                    error_row = f"{batch_size:>12} | ERROR: {str(exc)[:50]}"
                     print(error_row)
                     results.append(error_row)
-
-            # Clean up model to free GPU memory
-            llm.shutdown()
-            del llm
-            torch.cuda.empty_cache()
-
-        except Exception as e:
-            error_msg = f"Failed to load model {model_name}: {str(e)}"
+        except Exception as exc:
+            error_msg = f"Failed to load model {model_name}: {exc}"
             print(error_msg)
             results.append(error_msg)
+        finally:
+            if llm is not None:
+                llm.shutdown()
+                del llm
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
-    # Footer
-    footer = f"\n{'=' * 80}\nBenchmark completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'=' * 80}\n"
+    footer = (
+        f"\n{'=' * 80}\nBenchmark completed at: "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'=' * 80}\n"
+    )
     print(footer)
     results.append(footer)
 
-    # Save results to file
-    with open(output_file, "w") as f:
-        f.write("\n".join(results))
+    with open(output_file, "w") as file:
+        file.write("\n".join(results))
 
     print(f"\nResults saved to: {output_file}")
 
