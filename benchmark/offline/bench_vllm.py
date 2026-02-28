@@ -86,6 +86,19 @@ def format_comparison_row(batch_size, lhs_result, rhs_result):
     )
 
 
+def format_tp_comparison_row(batch_size, prev_result, curr_result):
+    if prev_result is None or curr_result is None:
+        return f"{batch_size:>12} | {'N/A':>14} | {'N/A':>14} | {'N/A':>12}"
+
+    prev_throughput = prev_result["throughput"]
+    curr_throughput = curr_result["throughput"]
+    ratio = curr_throughput / prev_throughput if prev_throughput else float("inf")
+    return (
+        f"{batch_size:>12} | {prev_throughput:>14.2f} | {curr_throughput:>14.2f} | "
+        f"{ratio:>12.2f}"
+    )
+
+
 def main():
     # Generate output filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -211,29 +224,39 @@ Models: {[m['name'] for m in MODELS]}
                 print(comparison_row)
                 results.append(comparison_row)
 
-        for attention_backend in ATTENTION_BACKENDS:
-            comparison_header = (
-                f"\n{'-' * 80}\nTP Comparison for {attention_backend} (tok/s)\n{'-' * 80}"
+        if len(TP_SIZES) < 2:
+            skip_msg = (
+                f"\nSkipping TP comparison because only one TP size is configured: {TP_SIZES}"
             )
-            comparison_table_header = (
-                f"{'Batch Size':>12} | {'TP=1':>14} | {'TP=2':>14} | {'TP2/TP1 Ratio':>12}"
-            )
-            comparison_separator = "-" * len(comparison_table_header)
-            print(comparison_header)
-            print(comparison_table_header)
-            print(comparison_separator)
-            results.append(comparison_header)
-            results.append(comparison_table_header)
-            results.append(comparison_separator)
+            print(skip_msg)
+            results.append(skip_msg)
+        else:
+            for attention_backend in ATTENTION_BACKENDS:
+                for prev_tp, curr_tp in zip(TP_SIZES, TP_SIZES[1:]):
+                    comparison_header = (
+                        f"\n{'-' * 80}\nTP Comparison for {attention_backend}: "
+                        f"TP={prev_tp} vs TP={curr_tp} (tok/s)\n{'-' * 80}"
+                    )
+                    comparison_table_header = (
+                        f"{'Batch Size':>12} | {f'TP={prev_tp}':>14} | {f'TP={curr_tp}':>14} | "
+                        f"{f'TP{curr_tp}/TP{prev_tp} Ratio':>12}"
+                    )
+                    comparison_separator = "-" * len(comparison_table_header)
+                    print(comparison_header)
+                    print(comparison_table_header)
+                    print(comparison_separator)
+                    results.append(comparison_header)
+                    results.append(comparison_table_header)
+                    results.append(comparison_separator)
 
-            for batch_size in BATCH_SIZES:
-                comparison_row = format_comparison_row(
-                    batch_size,
-                    model_results.get((attention_backend, 2), {}).get(batch_size),
-                    model_results.get((attention_backend, 1), {}).get(batch_size),
-                )
-                print(comparison_row)
-                results.append(comparison_row)
+                    for batch_size in BATCH_SIZES:
+                        comparison_row = format_tp_comparison_row(
+                            batch_size,
+                            model_results.get((attention_backend, prev_tp), {}).get(batch_size),
+                            model_results.get((attention_backend, curr_tp), {}).get(batch_size),
+                        )
+                        print(comparison_row)
+                        results.append(comparison_row)
     
     # Footer
     footer = f"\n{'='*80}\nBenchmark completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n{'='*80}\n"
