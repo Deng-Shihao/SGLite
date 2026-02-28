@@ -17,6 +17,8 @@ MODELS = [
     {"name": "Qwen/Qwen3-0.6B", "dtype": None},
     # {"name": "Qwen/Qwen3-4B", "dtype": None},
     # {"name": "Qwen/Qwen3-4B-AWQ", "dtype": torch.float16},
+    # {"name": "Qwen/Qwen3-8B", "dtype": None},
+    # {"name": "Qwen/Qwen3-8B-AWQ", "dtype": torch.float16},
 ]
 
 

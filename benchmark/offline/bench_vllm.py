@@ -17,6 +17,8 @@ MODELS = [
     {"name": "Qwen/Qwen3-0.6B"},
     {"name": "Qwen/Qwen3-4B"},
     {"name": "Qwen/Qwen3-4B-AWQ"},
+    {"name": "Qwen/Qwen3-8B"},
+    {"name": "Qwen/Qwen3-8B-AWQ"},
 ]
 
 # Warmup configuration
