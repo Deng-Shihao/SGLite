@@ -12,9 +12,9 @@ from vllm import LLM, SamplingParams
 # Benchmark Configuration
 MAX_INPUT_LEN = 1024
 MAX_OUTPUT_LEN = 1024
-BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 ATTENTION_BACKENDS = ["FLASHINFER", "FLASH_ATTN"]
-TP_SIZES = [1, 2]
+TP_SIZES = [1]
 MODELS = [
     {"name": "Qwen/Qwen3-0.6B"},
     {"name": "Qwen/Qwen3-4B"},
