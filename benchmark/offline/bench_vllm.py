@@ -24,7 +24,7 @@ MODELS = [
 ]
 
 # Warmup configuration
-WARMUP_SEQS = 32
+WARMUP_SEQS = 5
 WARMUP_TOKENS = 128
 
 
