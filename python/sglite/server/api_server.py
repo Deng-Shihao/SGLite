@@ -334,7 +334,7 @@ async def shell(shell_bench: bool = False):
     state = get_global_state()
     commands = ["/exit", "/reset"]
     completer = WordCompleter(commands)
-    session = PromptSession("$ ", completer=completer)
+    session = PromptSession(">>> ", completer=completer)
 
     try:
         history: List[Tuple[str, str]] = []

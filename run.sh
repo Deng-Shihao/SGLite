@@ -23,3 +23,7 @@
 python -m sglite \
 --model "Qwen/Qwen3-4B" \
 --max-seq-len-override 4096
+
+# Shell Bench
+python -m sglite --model Qwen/Qwen3-8B --shell-bench
+python -m sglite --model Qwen/Qwen3-8B-AWQ --shell-bench
