@@ -66,7 +66,7 @@ class EnvClassSingleton:
 
     # backend runtime
     FLASHINFER_USE_TENSOR_CORES = EnvOption()
-    DISABLE_OVERLAP_SCHEDULING = EnvBool(False)
+    DISABLE_OVERLAP_SCHEDULING = EnvBool(True)
     OVERLAP_EXTRA_SYNC = EnvBool(False)
     PYNCCL_MAX_BUFFER_SIZE = EnvMem(1024**3)
 

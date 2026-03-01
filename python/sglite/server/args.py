@@ -64,7 +64,7 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
     from sglite.attention import validate_backend
     from sglite.kvcache import SUPPORTED_CACHE_MANAGER
 
-    parser = argparse.ArgumentParser(description="MiniSGL Server Arguments")
+    parser = argparse.ArgumentParser(description="SGLite Server Arguments")
 
     parser.add_argument(
         "--model-path",

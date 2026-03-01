@@ -144,4 +144,5 @@ python3 -m sglang.launch_server --model "Qwen/Qwen3-32B" --tp 4 \
 ## 📚 Learn More
 
 - **[Detailed Features](./docs/features.md)**: Explore all available features and command-line arguments.
+- **[Parameter Reference](./docs/parameters.md)**: See implemented CLI flags, environment variables, API fields, and context-length rules.
 - **[System Architecture](./docs/structures.md)**: Dive deep into the design and data flow of SGLite.
