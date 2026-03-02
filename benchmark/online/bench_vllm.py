@@ -22,14 +22,16 @@ async def main(args):
     """
     Benchmark script for vLLM using OpenAI-compatible API.
 
-    This script tests vLLM's performance with various batch sizes.
+    This script benchmarks vLLM through the same client path as bench_sglite.
+    The default workload is aligned with bench_sglite for a fairer comparison.
     vLLM should be running on the specified port with OpenAI-compatible API enabled.
 
     To run vLLM server:
     python -m vllm.entrypoints.openai.api_server \
         --model Qwen/Qwen3-4B-AWQ \
         --port 8000 \
-        --gpu-memory-utilization 0.95
+        --attention-config.backend FLASHINFER \
+        --gpu-memory-utilization 0.9
     """
     try:
         random.seed(42)  # reproducibility
@@ -47,7 +49,7 @@ async def main(args):
         # Configuration from args
         TEST_BS = args.batch_sizes
         PORT = args.port
-        MODEL_PATH = args.model  # Model path for tokenizer fallback
+        MODEL_PATH = args.model
 
         # Create the async client for vLLM
         async with OpenAI(base_url=f"http://127.0.0.1:{PORT}/v1", api_key="EMPTY") as client:
@@ -62,18 +64,26 @@ async def main(args):
                 logger.error(f"Make sure vLLM is running on http://127.0.0.1:{PORT}")
                 sys.exit(1)
 
+            # Default to the server model so prompt generation matches the served tokenizer.
+            tokenizer_source = MODEL_PATH or MODEL
+
             # Load tokenizer
             try:
-                tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-                logger.info(f"Loaded tokenizer from {MODEL_PATH}")
+                tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
+                logger.info(f"Loaded tokenizer from {tokenizer_source}")
             except Exception as e:
-                logger.warning(f"Failed to load tokenizer from {MODEL_PATH}: {e}")
-                logger.warning(f"Trying to use server model name: {MODEL}...")
-                try:
-                    tokenizer = AutoTokenizer.from_pretrained(MODEL)
-                    logger.info(f"Loaded tokenizer from {MODEL}")
-                except Exception as e2:
-                    logger.warning(f"Failed to load tokenizer from {MODEL}: {e2}")
+                logger.warning(f"Failed to load tokenizer from {tokenizer_source}: {e}")
+                if tokenizer_source != MODEL:
+                    logger.warning(f"Trying to use server model name: {MODEL}...")
+                    try:
+                        tokenizer = AutoTokenizer.from_pretrained(MODEL)
+                        logger.info(f"Loaded tokenizer from {MODEL}")
+                    except Exception as e2:
+                        logger.warning(f"Failed to load tokenizer from {MODEL}: {e2}")
+                        logger.warning("Using Llama-2 tokenizer as fallback...")
+                        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+                        logger.info("Using Llama-2 tokenizer as fallback")
+                else:
                     logger.warning("Using Llama-2 tokenizer as fallback...")
                     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
                     logger.info("Using Llama-2 tokenizer as fallback")
@@ -129,11 +139,6 @@ async def main(args):
                         msgs[:batch_size],
                         output_lengths[:batch_size],
                         MODEL,
-                        # vLLM-specific extra_body parameters can be added here
-                        extra_body={
-                            "ignore_eos": True,  # For consistent comparison
-                            "top_k": 1,  # Greedy decoding
-                        },
                     )
                     process_benchmark_results(results)
 
@@ -165,8 +170,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen3-4B-AWQ",
-        help="Model name or path (used for loading tokenizer)",
+        default=None,
+        help="Optional model name or path used for loading tokenizer; defaults to the model exposed by vLLM",
     )
     parser.add_argument(
         "--port",
@@ -178,14 +183,14 @@ if __name__ == "__main__":
         "--batch-sizes",
         type=int,
         nargs="+",
-        default=[1, 4, 8, 16, 32, 64],
-        help="Batch sizes to test",
+        default=[256],
+        help="Batch sizes to test; default matches bench_sglite",
     )
     parser.add_argument(
         "--max-input",
         type=int,
-        default=8192,
-        help="Maximum input length in tokens",
+        default=1024,
+        help="Maximum input length in tokens; default matches bench_sglite",
     )
     parser.add_argument(
         "--output-min",
@@ -203,7 +208,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logger.info("vLLM Benchmark Configuration:")
-    logger.info(f"  Model: {args.model}")
+    logger.info(f"  Model override: {args.model or '<server model>'}")
     logger.info(f"  Port: {args.port}")
     logger.info(f"  Batch sizes: {args.batch_sizes}")
     logger.info(f"  Max input: {args.max_input}")
