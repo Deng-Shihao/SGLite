@@ -61,6 +61,31 @@ def build_messages(
     return messages
 
 
+def get_input_device(model, fallback_device: torch.device) -> torch.device:
+    hf_device_map = getattr(model, "hf_device_map", None)
+    if isinstance(hf_device_map, dict):
+        for mapped_device in hf_device_map.values():
+            if mapped_device == "disk":
+                continue
+            if isinstance(mapped_device, torch.device):
+                return mapped_device
+            if isinstance(mapped_device, str):
+                return torch.device(mapped_device)
+            if isinstance(mapped_device, int):
+                return torch.device(f"cuda:{mapped_device}")
+
+    model_device = getattr(model, "device", None)
+    if isinstance(model_device, torch.device):
+        return model_device
+    if isinstance(model_device, str):
+        return torch.device(model_device)
+
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        return fallback_device
+
+
 def print_benchmark(num_input_tokens: int, num_output_tokens: int, ttft: float, t_end: float, t_first_token: float) -> None:
     gen_duration = t_end - t_first_token
     if gen_duration > 0 and num_output_tokens > 1:
@@ -94,9 +119,8 @@ def run_generation(
         add_special_tokens=False,
     )
     num_input_tokens = int(enc["input_ids"].shape[-1])
-
-    if device_map is None:
-        enc = {k: v.to(device) for k, v in enc.items()}
+    input_device = get_input_device(model, device)
+    enc = {k: v.to(input_device) for k, v in enc.items()}
 
     streamer = TextIteratorStreamer(
         tokenizer,
@@ -209,7 +233,7 @@ def interactive_shell(model, tokenizer, args, device: torch.device, device_map: 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="Qwen/Qwen3-0.6B", help="HF model id")
+    parser.add_argument("--model", default="Qwen/Qwen3-14B", help="HF model id")
     parser.add_argument(
         "--prompt",
         default="Explain streaming inference in one paragraph.",
@@ -221,7 +245,7 @@ def main() -> None:
         help="System prompt used to build chat history",
     )
     parser.add_argument("--interactive", action="store_true", help="Run a CLI shell with /clear and /exit")
-    parser.add_argument("--max_new_tokens", type=int, default=200)
+    parser.add_argument("--max_new_tokens", type=int, default=8192)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument(
