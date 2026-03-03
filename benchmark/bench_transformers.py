@@ -236,7 +236,7 @@ def main() -> None:
     parser.add_argument("--model", default="Qwen/Qwen3-14B", help="HF model id")
     parser.add_argument(
         "--prompt",
-        default="Explain streaming inference in one paragraph.",
+        default="Briefly explain large language models to me.",
         help="User prompt for one-shot mode",
     )
     parser.add_argument(
