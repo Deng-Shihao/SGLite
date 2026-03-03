@@ -1,148 +1,219 @@
-<p align="center">
-<img width="400" src="/assets/logo.png">
-</p>
-
 # SGLite
 
-A **lightweight yet high-performance** inference framework for Large Language Models.
+SGLite is a lightweight LLM inference framework focused on readability and practical serving performance. It is a compact re-implementation of core ideas from [SGLang](https://github.com/sgl-project/sglang), intended both as a usable engine and as a codebase that is small enough to study.
 
----
+The current implementation exposes:
 
-SGLite is a compact implementation of [SGLang](https://github.com/sgl-project/sglang), designed to demystify the complexities of modern LLM serving systems. With a compact codebase of **~5,000 lines of Python**, it serves as both a capable inference engine and a transparent reference for researchers and developers.
+- An OpenAI-compatible server endpoint at `/v1/chat/completions`
+- A simple streaming endpoint at `/generate`
+- An interactive terminal chat mode
+- Multi-GPU tensor parallel serving
+- KV cache management with `radix` and `naive` modes
+- Chunked prefill, CUDA graph capture, and mixed attention backends
 
-## ✨ Key Features
+## Supported Models
 
-- **High Performance**: Achieves state-of-the-art throughput and latency with advanced optimizations.
-- **Lightweight & Readable**: A clean, modular, and fully type-annotated codebase that is easy to understand and modify.
-- **Advanced Optimizations**:
-  - **Radix Cache**: Reuses KV cache for shared prefixes across requests.
-  - **Chunked Prefill**: Reduces peak memory usage for long-context serving.
-  - **Overlap Scheduling**: Hides CPU scheduling overhead with GPU computation.
-  - **Tensor Parallelism**: Scales inference across multiple GPUs.
-  - **Optimized Kernels**: Integrates **FlashAttention** and **FlashInfer** for maximum efficiency.
-  - ...
+The current implementation supports:
 
-## 🚀 Quick Start
+- Dense `Qwen3` models
+- Dense `Llama` models
+- AWQ-quantized variants of supported model families
 
-> **⚠️ Platform Support**: SGLite currently supports **Linux only** (x86_64 and aarch64). Windows and macOS are not supported due to dependencies on Linux-specific CUDA kernels (`sgl-kernel`, `flashinfer`). We recommend using [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) on Windows or Docker for cross-platform compatibility.
+For AWQ models, SGLite detects quantization metadata from the Hugging Face config or local quantization config files. On compatible SM80+ GPUs, it will try to use AWQ Marlin automatically and fall back to AWQ Triton when needed.
 
-### 1. Environment Setup
+## Status
 
-We recommend using `uv` for a fast and reliable installation (note that `uv` does not conflict with `conda`).
+This repository is still early-stage. The public surface is usable, but some areas are intentionally narrow:
 
-```bash
-# Create a virtual environment (Python 3.10+ recommended)
-uv venv --python=3.12
-source .venv/bin/activate
-```
+- Supported model families in the current codebase: `Qwen3` and `Llama`
+- Quantized inference support includes AWQ models
+- The OpenAI-style API only implements a subset of request fields
+- The chat endpoint currently returns a streaming response even if `stream=false`
 
-**Prerequisites**: SGLite relies on CUDA kernels that are JIT-compiled. Ensure you have the **NVIDIA CUDA Toolkit** installed and that its version matches your driver's version. You can check your driver's CUDA capability with `nvidia-smi`.
+For the implemented flags and API fields, see [docs/parameters.md](./docs/parameters.md).
 
-### 2. Installation
+## Requirements
 
-Install SGLite directly from the source:
+- Linux
+- Python 3.10+
+- NVIDIA GPU with CUDA available
+- CUDA toolkit installed for JIT-compiled kernels
+
+This project is not intended for native Windows or macOS execution. If needed, use WSL2 or a Linux container with GPU passthrough.
+
+## Installation
+
+`uv` is the expected package manager in this repository.
 
 ```bash
 git clone https://github.com/sgl-project/sglite.git
-cd sglite && uv venv --python=3.12 && source .venv/bin/activate
+cd sglite
+
+uv venv --python=3.12
+source .venv/bin/activate
+
 uv pip install -e .
 ```
 
-<details>
-<summary><b>💡 Installing on Windows (WSL2)</b></summary>
-
-Since SGLite requires Linux-specific dependencies, Windows users should use WSL2:
-
-1. **Install WSL2** (if not already installed):
-   ```powershell
-   # In PowerShell (as Administrator)
-   wsl --install
-   ```
-
-2. **Install CUDA on WSL2**:
-   - Follow [NVIDIA's WSL2 CUDA guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
-   - Ensure your Windows GPU drivers support WSL2
-
-3. **Install SGLite in WSL2**:
-   ```bash
-   # Inside WSL2 terminal
-   git clone https://github.com/sgl-project/sglite.git
-   cd sglite && uv venv --python=3.12 && source .venv/bin/activate
-   uv pip install -e .
-   ```
-
-4. **Access from Windows**: The server will be accessible at `http://localhost:8000` from Windows browsers and applications.
-
-</details>
-
-### 3. Online Serving
-
-Launch an OpenAI-compatible API server with a single command.
+Install dev tools if you want to run tests and local checks:
 
 ```bash
-# Deploy Qwen/Qwen3-0.6B on a single GPU
-python -m sglite --model "Qwen/Qwen3-0.6B"
-
-# Deploy meta-llama/Llama-3.1-70B-Instruct on 4 GPUs with Tensor Parallelism, on port 30000
-python -m sglite --model "meta-llama/Llama-3.1-70B-Instruct" --tp 4 --port 30000
+uv pip install -e ".[dev]"
 ```
 
-Once the server is running, you can send requests using standard tools like `curl` or any OpenAI-compatible client.
+## Quick Start
 
-### 4. Interactive Shell
+### Run the API server
 
-Chat with your model directly in the terminal by adding the `--shell` flag.
+Single GPU:
 
 ```bash
-python -m sglite --model "Qwen/Qwen3-0.6B" --shell
-python -m sglite --model "Qwen/Qwen3-4B-AWQ" --shell
+python -m sglite --model-path "Qwen/Qwen3-0.6B"
 ```
 
-![shell-example](https://lmsys.org/images/blog/sglite/shell.png)
-
-You can also use `/reset` to clear the chat history.
-
-## Benchmark
-
-### Offline inference
-
-See [bench.py](./benchmark/offline/bench.py) for more details. Set `SGLITE_DISABLE_OVERLAP_SCHEDULING=1` for ablation study on overlap scheduling.
-
-Test Configuration:
-
-- Hardware: 1xH200 GPU.
-- Model: Qwen3-0.6B, Qwen3-14B
-- Total Requests: 256 sequences
-- Input Length: Randomly sampled between 100-1024 tokens
-- Output Length: Randomly sampled between 100-1024 tokens
-
-![offline](https://lmsys.org/images/blog/sglite/offline.png)
-
-### Online inference
-
-See [benchmark_qwen.py](./benchmark/online/bench_qwen.py) for more details.
-
-Test Configuration:
-
-- Hardware: 4xH200 GPU, connected by NVLink.
-- Model: Qwen3-32B
-- Dataset: [Qwen trace](https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon/blob/main/qwen_traceA_blksz_16.jsonl), replaying first 1000 requests.
-
-Launch command:
+Single GPU with an AWQ model:
 
 ```bash
-# SGLite
-python -m sglite --model "Qwen/Qwen3-32B" --tp 4 --cache naive
-
-# SGLang
-python3 -m sglang.launch_server --model "Qwen/Qwen3-32B" --tp 4 \
-    --disable-radix --port 1919 --decode-attention flashinfer
+python -m sglite --model-path "Qwen/Qwen3-4B-AWQ"
 ```
 
-![online](https://lmsys.org/images/blog/sglite/online.png)
+Tensor parallel across 4 GPUs:
 
-## 📚 Learn More
+```bash
+python -m sglite \
+  --model-path "meta-llama/Llama-3.1-70B-Instruct" \
+  --tp-size 4 \
+  --port 30000
+```
 
-- **[Detailed Features](./docs/features.md)**: Explore all available features and command-line arguments.
-- **[Parameter Reference](./docs/parameters.md)**: See implemented CLI flags, environment variables, API fields, and context-length rules.
-- **[System Architecture](./docs/structures.md)**: Dive deep into the design and data flow of SGLite.
+Useful options:
+
+- `--dtype auto|float16|bfloat16|float32`
+- `--cache-type radix|naive`
+- `--attention-backend auto|fi|fa|fa,fi`
+- `--max-seq-len-override <int>`
+- `--memory-ratio <float>`
+
+Inspect all implemented flags with:
+
+```bash
+python -m sglite --help
+```
+
+### Run interactive CLI mode
+
+```bash
+python -m sglite --model-path "Qwen/Qwen3-0.6B" --cli
+```
+
+CLI mode with an AWQ model:
+
+```bash
+python -m sglite --model-path "Qwen/Qwen3-4B-AWQ" --cli
+```
+
+CLI benchmark display:
+
+```bash
+python -m sglite --model-path "Qwen/Qwen3-8B" --cli-bench
+```
+
+CLI commands:
+
+- `/clear` clears the current conversation history
+- `/exit` exits the shell
+
+### Example API calls
+
+Health check:
+
+```bash
+curl http://127.0.0.1:1919/v1
+```
+
+List the loaded model:
+
+```bash
+curl http://127.0.0.1:1919/v1/models
+```
+
+OpenAI-compatible chat completion:
+
+```bash
+curl http://127.0.0.1:1919/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen3-0.6B",
+    "messages": [
+      {"role": "user", "content": "Write a haiku about CUDA graphs."}
+    ],
+    "max_tokens": 64,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 20
+  }'
+```
+
+Simple generate endpoint:
+
+```bash
+curl http://127.0.0.1:1919/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Explain radix cache in one paragraph.",
+    "max_tokens": 128,
+    "ignore_eos": false
+  }'
+```
+
+## Benchmarks
+
+Offline benchmark:
+
+```bash
+python benchmark/offline/bench.py
+```
+
+Online benchmark against a running SGLite server:
+
+```bash
+python benchmark/online/bench_sglite.py
+```
+
+Comparison script for a vLLM server:
+
+```bash
+python benchmark/online/bench_vllm.py
+```
+
+For overlap-scheduling ablation, explicitly disable it:
+
+```bash
+SGLITE_DISABLE_OVERLAP_SCHEDULING=1 python benchmark/offline/bench.py
+```
+
+## Development
+
+Run tests:
+
+```bash
+uv run pytest
+```
+
+The repository layout is documented here:
+
+- [docs/features.md](./docs/features.md)
+- [docs/parameters.md](./docs/parameters.md)
+- [docs/structures.md](./docs/structures.md)
+
+## Notes on Current Behavior
+
+- The server binds to `127.0.0.1:1919` by default.
+- The distributed control address uses `port + 1`.
+- In CLI mode, SGLite forces single-request execution and disables normal server-side output noise.
+- The effective runtime context length is capped by both model config and KV cache capacity.
+- `SGLITE_DISABLE_OVERLAP_SCHEDULING` is currently opt-out by default in the implementation unless you explicitly set it to `0`, `false`, or `no`.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

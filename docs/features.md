@@ -4,14 +4,14 @@
 
 SGLite supports online serving with an OpenAI-compatible API server. It provides the standard `/v1/chat/completions` endpoint, allowing seamless integration with existing tools and clients. For detailed command-line arguments and configuration options, run `python -m sglite --help`.
 
-## Interactive Shell Mode
+## Interactive CLI Mode
 
-For demonstration and testing purposes, an interactive shell mode is available. In this mode, users can input prompts directly, and the LLM will generate responses in real-time. The shell automatically caches chat history to maintain context. To clear the conversation history and start a new session, use the `/reset` command.
+For demonstration and testing purposes, an interactive CLI mode is available. In this mode, users can input prompts directly, and the LLM will generate responses in real-time. The CLI automatically caches chat history to maintain context. To clear the conversation history and start a new session, use the `/clear` command.
 
 Example:
 
 ```bash
-python -m sglite --model "Qwen/Qwen3-0.6B" --shell
+python -m sglite --model "Qwen/Qwen3-0.6B" --cli
 ```
 
 ## Distributed Serving

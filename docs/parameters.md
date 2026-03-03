@@ -7,7 +7,7 @@ This document summarizes the parameters implemented in the current codebase. It 
 - API request parameters
 - Effective context length rules
 
-Note: some examples in `README.md` still use older flag names such as `--model`, `--shell`, `--tp`, and `--cache`. The current implementation uses `--model-path`, `--shell-mode`, `--tp-size`, and `--cache-type`.
+Note: some examples in `README.md` still use older flag names such as `--model`, `--tp`, and `--cache`. The current implementation uses `--model-path`, `--cli`, `--tp-size`, and `--cache-type`.
 
 ## Command-Line Arguments
 
@@ -31,12 +31,12 @@ These arguments are defined in `python/sglite/server/args.py`.
 | `--num-pages` | `--num-tokens` | `None` | Overrides the maximum number of KV cache pages. With the current `page_size=1`, this is close to a token-capacity limit. |
 | `--attention-backend` | `--attn` | `auto` | Attention backend. Supported values are `fi`, `fa`, or a hybrid pair such as `fa,fi`. With `auto`, the current implementation selects `fi` on Blackwell and pre-Hopper GPUs, and `fa,fi` on Hopper. |
 | `--cache-type` | none | `radix` | KV cache management policy. Supported values are `radix` and `naive`. |
-| `--shell-mode` | none | `False` | Runs the server in interactive shell mode. |
-| `--shell-bench` | none | `False` | Shows shell-side TTFT and generation speed. Enabling it also enables shell mode. |
+| `--cli` | none | `False` | Runs the server in interactive CLI mode. |
+| `--cli-bench` | none | `False` | Shows CLI-side TTFT and generation speed. Enabling it also enables CLI mode. |
 
-## Shell Mode Behavior
+## CLI Mode Behavior
 
-When shell mode is enabled, the launcher forces:
+When CLI mode is enabled, the launcher forces:
 
 | Setting | Forced Value |
 |---|---|
@@ -44,9 +44,9 @@ When shell mode is enabled, the launcher forces:
 | `max_running_req` | `1` |
 | `silent_output` | `True` |
 
-The shell also stores chat history in memory and sends the whole conversation back on each turn. Use `/reset` to clear that history.
+The CLI also stores chat history in memory and sends the whole conversation back on each turn. Use `/clear` to clear that history.
 
-`--shell-bench` also enables shell mode automatically.
+`--cli-bench` also enables CLI mode automatically.
 
 ## Environment Variables
 
@@ -56,8 +56,8 @@ Boolean environment variables are parsed from strings. The values `1`, `true`, a
 
 | Environment Variable | Default | Description |
 |---|---|---|
-| `SGLITE_SHELL_MAX_TOKENS` | `2048` | Maximum generated tokens per shell reply. |
-| `SGLITE_SHELL_TOP_K` | `-1` | Shell sampling `top_k`. `-1` behaves like no top-k limit. |
+| `SGLITE_SHELL_MAX_TOKENS` | `2048` | Maximum generated tokens per CLI reply. |
+| `SGLITE_SHELL_TOP_K` | `-1` | CLI sampling `top_k`. `-1` behaves like no top-k limit. |
 | `SGLITE_SHELL_TOP_P` | `1.0` | Shell sampling `top_p`. |
 | `SGLITE_SHELL_TEMPERATURE` | `0.6` | Shell sampling temperature. |
 | `SGLITE_FLASHINFER_USE_TENSOR_CORES` | `None` | Optional FlashInfer Tensor Core toggle. If unset, backend defaults apply. |
@@ -140,16 +140,16 @@ Run a server:
 python -m sglite --model-path "Qwen/Qwen3-0.6B"
 ```
 
-Run shell mode with a custom context override:
+Run CLI mode with a custom context override:
 
 ```bash
-python -m sglite --model-path "Qwen/Qwen3-0.6B" --shell-mode --max-seq-len-override 32768
+python -m sglite --model-path "Qwen/Qwen3-0.6B" --cli --max-seq-len-override 32768
 ```
 
-Run shell mode with custom generation length:
+Run CLI mode with custom generation length:
 
 ```bash
-SGLITE_SHELL_MAX_TOKENS=1024 python -m sglite --model-path "Qwen/Qwen3-0.6B" --shell-mode
+SGLITE_SHELL_MAX_TOKENS=1024 python -m sglite --model-path "Qwen/Qwen3-0.6B" --cli
 ```
 
 Enable overlap scheduling explicitly:

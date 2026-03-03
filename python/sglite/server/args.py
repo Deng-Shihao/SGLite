@@ -195,15 +195,17 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
     )
 
     parser.add_argument(
-        "--shell-mode",
+        "--cli",
+        dest="cli_mode",
         action="store_true",
-        help="Run the server in shell mode.",
+        help="Run the server in interactive CLI mode.",
     )
 
     parser.add_argument(
-        "--shell-bench",
+        "--cli-bench",
+        dest="cli_bench",
         action="store_true",
-        help="Enable benchmark display in shell mode (TTFT, generation speed).",
+        help="Enable benchmark display in CLI mode (TTFT, generation speed).",
     )
 
     # Parse arguments
@@ -211,8 +213,8 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
     kwargs = parser.parse_args(args).__dict__.copy()
 
     # resolve some arguments
-    run_shell |= kwargs.pop("shell_mode")
-    shell_bench: bool = kwargs.pop("shell_bench")
+    run_shell |= kwargs.pop("cli_mode")
+    shell_bench: bool = kwargs.pop("cli_bench")
     if shell_bench:
         run_shell = True
     if run_shell:

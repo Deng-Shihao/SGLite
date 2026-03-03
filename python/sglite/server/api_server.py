@@ -332,7 +332,7 @@ async def async_input(prompt=""):
 
 async def shell(shell_bench: bool = False):
     state = get_global_state()
-    commands = ["/exit", "/reset"]
+    commands = ["/exit", "/clear"]
     completer = WordCompleter(commands)
     session = PromptSession(">>> ", completer=completer)
 
@@ -345,7 +345,7 @@ async def shell(shell_bench: bool = False):
             if cmd.startswith("/"):
                 if cmd == "/exit":
                     return
-                if cmd == "/reset":
+                if cmd == "/clear":
                     history = []
                     continue
                 raise ValueError(f"Unknown command: {cmd}")
